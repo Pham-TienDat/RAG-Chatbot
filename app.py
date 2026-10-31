@@ -1,20 +1,16 @@
-import os
+import faulthandler
+import logging
 
 import streamlit as st
-from dotenv import load_dotenv
 
-from langchain_classic.chains.combine_documents import create_stuff_documents_chain
-from langchain_classic.chains.retrieval import create_retrieval_chain
-from langchain_community.vectorstores import FAISS
-from langchain_groq import ChatGroq
-from langchain_huggingface import HuggingFaceEmbeddings
-from langsmith import Client
+from core_rag import ask, build_rag_chain, get_vectorstore
 
-DB_FAISS_PATH = "vectorstore/db_faiss"
-env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
-load_dotenv(dotenv_path=env_path)
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
-GROQ_MODEL_NAME = "openai/gpt-oss-120b"
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+
+faulthandler.enable(all_threads=True)
 
 # ---------------------------------------------------------------------------
 # CẤU HÌNH TRANG
@@ -220,18 +216,6 @@ def inject_css():
 
 
 # ---------------------------------------------------------------------------
-# VECTOR STORE (cache bằng resource)
-# ---------------------------------------------------------------------------
-@st.cache_resource
-def get_vectorstore():
-    embedding_model = HuggingFaceEmbeddings(model_name="BAAI/bge-m3")
-    db = FAISS.load_local(
-        DB_FAISS_PATH, embedding_model, allow_dangerous_deserialization=True
-    )
-    return db
-
-
-# ---------------------------------------------------------------------------
 # SIDEBAR
 # ---------------------------------------------------------------------------
 def render_sidebar():
@@ -357,6 +341,7 @@ def main():
 
     if prompt:
         st.session_state.messages.append({"role": "user", "content": prompt})
+        stage = "render_user_message"
 
         try:
             with st.chat_message("user"):
@@ -368,6 +353,7 @@ def main():
                 unsafe_allow_html=True,
             )
             try:
+                stage = "get_vectorstore"
                 vectorstore = get_vectorstore()
                 if vectorstore is None:
                     st.error(
@@ -376,29 +362,10 @@ def main():
                     loading.empty()
                     return
 
-                llm = ChatGroq(
-                    model=GROQ_MODEL_NAME,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    api_key=GROQ_API_KEY,
-                )
+                # Xây dựng RAG chain
+                rag_chain = build_rag_chain(vectorstore, k, temperature, max_tokens)
+                result, source_documents = ask(rag_chain, prompt)
 
-                client = Client()
-                retrieval_qa_chat_prompt = client.pull_prompt(
-                    "langchain-ai/retrieval-qa-chat",
-                    dangerously_pull_public_prompt=True,
-                )
-                combine_docs_chain = create_stuff_documents_chain(
-                    llm, retrieval_qa_chat_prompt
-                )
-                rag_chain = create_retrieval_chain(
-                    vectorstore.as_retriever(search_kwargs={"k": k}),
-                    combine_docs_chain,
-                )
-
-                response = rag_chain.invoke({"input": prompt})
-                result = response["answer"]
-                source_documents = response["context"]
             finally:
                 loading.empty()
 

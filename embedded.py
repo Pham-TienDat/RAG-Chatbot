@@ -1,19 +1,30 @@
-from langchain_community.document_loaders import PyPDFLoader, DirectoryLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_community.document_loaders import DirectoryLoader, PyMuPDFLoader
 from langchain_community.vectorstores import FAISS
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 # Load raw PDF
 DATA_PATH = "data/"
 
 
 def load_pdf_file(data):
-    loader = DirectoryLoader(data, glob="*.pdf", loader_cls=PyPDFLoader)
+    loader = DirectoryLoader(data, glob="*.pdf", loader_cls=PyMuPDFLoader)
     documents = loader.load()
     return documents
 
 
 documents = load_pdf_file(DATA_PATH)
+
+print("Số documents:", len(documents))
+
+for i, doc in enumerate(documents[:5]):
+    print(f"\n--- Document {i + 1} ---")
+
+    print("Metadata:", doc.metadata)
+
+    print("Độ dài nội dung:", len(doc.page_content))
+
+    print("Nội dung:", repr(doc.page_content[:300]))
 
 
 # Create Chunks
@@ -24,6 +35,11 @@ def create_chunks(extracted_data):
 
 
 text_chunks = create_chunks(documents)
+
+print("Số text_chunks:", len(text_chunks))
+
+if not text_chunks:
+    raise ValueError("Không tạo được text chunks. Hãy kiểm tra nội dung PDF.")
 
 
 # Create Vector Embeddings
