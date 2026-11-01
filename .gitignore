@@ -15,3 +15,7 @@ venv/
 
 # Jupyter
 .ipynb_checkpoints/
+
+#  Data
+data/
+*.sqlite
